@@ -537,7 +537,7 @@ void _expandir_memoria_int(int **inPtr, int tamano)
         }
     }
 
-void _expandir_memoria_floatptr(float **inPtr, int tamano)
+void _expandir_memoria_floatptr(float **inPtr, int tamano)  //DEBUG this
     {
     float **ptr;
     printf("_expandir_memoria_floatptr\r\n");
@@ -569,41 +569,126 @@ void _operacion_incrementar_operadores(struct Operacion *mOp)
 
 ///@param mOp: Administrador de operaciones
 ///@param operador: Constante: por ejemplo SUMA, RGB_SUM, RGB_SAT, DIVISION, etc.
-///@param OperandoA: El número de la entrada que se va a usar como operando.
+///@param ...: Operandos: El número de la entrada que se va a usar como operando.
 #include <stdarg.h>
-void operacion_agregar_op(struct Operacion *mOp, int operador, int operandoA, ... )
+
+void operacion_agregar_op_varg(struct Operacion *mOp, int operador, va_list argumentosVar)
     {
-    if(mOp->opAd >= mOp->maxOperadores)
+    int opAd = mOp->opAd;
+//Si se requieren mas operadores, entonces expandir memoria.
+    if(opAd >= mOp->maxOperadores)
         {
-        printf("Expandiendo operadores %d->",mOp->opAd);
+        printf("Expandiendo operadores %d->",opAd);
         _operacion_incrementar_operadores(mOp);
         printf("%d\r\n",mOp->maxOperadores);
         }
-    int opAd = mOp->opAd;
     mOp->operador[opAd]=operador;
-    mOp->operandoA[opAd]=operandoA;
-//asignar memoria si es necesario
+//asignar memoria si es necesario:
     switch(operador)
         {
         case ULTIMOS_10:
             mOp->memorias[opAd] = (float *) malloc (sizeof(float) * 10);
             break;
         }
-//Carga operadores adicionales si es necesario
-    va_list argumentos;
+//Carga operadores adicionales si es necesario:
     switch(operador)
         {
+        //operaciones sin operadores (no hacer nada, solo para documentacion):
+        case ANTERIOR:
+        case ULTIMOS_10:
+            break;
+        //Operaciones de un solo operador:
+        case DELTA_ANTERIOR:
+        case IGUAL:   //0
+        case CUADRADO:
+        case CUBO:
+        case SENO:
+        case COSENO:
+        case TANGENTE:
+        case SENO_H:
+        case COSENO_H:
+        case TANGENTE_H:
+        case LOG:
+        case LOG10:
+            mOp->operandoA[opAd] = va_arg ( argumentosVar, int );
+            break;
+        //Operaciones de 3 operadores:
         case RGB_SUM:  //ejemplo
-            va_start(argumentos, operandoA);
-            mOp->operandoB[opAd] = va_arg ( argumentos, int );
-            mOp->operandoC[opAd] = va_arg ( argumentos, int );
-            va_end(argumentos);
+            mOp->operandoA[opAd] = va_arg ( argumentosVar, int );
+            mOp->operandoB[opAd] = va_arg ( argumentosVar, int );
+            mOp->operandoC[opAd] = va_arg ( argumentosVar, int );
             break;
         default:
             break;
         }
     mOp->opAd++;
     }
+
+
+void operacion_agregar_op(struct Operacion *mOp, int operador, ...)
+    {
+    va_list argumentos;
+    va_start(argumentos, operador);
+    operacion_agregar_op_varg(mOp, operador, argumentos);
+    va_end(argumentos);
+    /*int opAd = mOp->opAd;
+    //Si se requieren mas operadores, entonce expandir memoria.
+    if(opAd >= mOp->maxOperadores)
+        {
+        printf("Expandiendo operadores %d->",opAd);
+        _operacion_incrementar_operadores(mOp);
+        printf("%d\r\n",mOp->maxOperadores);
+        }
+    mOp->operador[opAd]=operador;
+    //asignar memoria si es necesario:
+    switch(operador)
+        {
+        case ULTIMOS_10:
+            mOp->memorias[opAd] = (float *) malloc (sizeof(float) * 10);
+            break;
+        }
+    //Carga operadores adicionales si es necesario
+    va_list argumentos;
+    va_start(argumentos, operador);
+    switch(operador)
+        {
+    //operaciones sin operadores (no hacer nada, solo para documentacion)
+        case ANTERIOR:
+        case ULTIMOS_10:
+            break;
+        //Operaciones de un solo operador
+        case DELTA_ANTERIOR:
+        case IGUAL:   //0
+        case CUADRADO:
+        case CUBO:
+        case SENO:
+        case COSENO:
+        case TANGENTE:
+        case SENO_H:
+        case COSENO_H:
+        case TANGENTE_H:
+        case LOG:
+        case LOG10:
+            mOp->operandoA[opAd] = va_arg ( argumentos, int );
+            break;
+        //Operaciones de 3 operadores
+        case RGB_SUM:  //ejemplo
+            mOp->operandoA[opAd] = va_arg ( argumentos, int );
+            mOp->operandoB[opAd] = va_arg ( argumentos, int );
+            mOp->operandoC[opAd] = va_arg ( argumentos, int );
+
+            break;
+        default:
+            break;
+        }
+    va_end(argumentos);
+    mOp->opAd++;*/
+
+    }
+
+
+
+
 
 
 void operacion_calcular(struct Operacion *mOp, float *entradas, int numEnt, float *salidas, int numSal)
@@ -648,7 +733,7 @@ void operacion_calcular(struct Operacion *mOp, float *entradas, int numEnt, floa
         int D = mOp->operandoD[i];
         switch(mOp->operador[i])
             {
-            case 0:  //(sin cambios)  //Tambien se puede usar para mover hacer historico de entradas
+            case IGUAL:  // 0 = (sin cambios)  //Tambien se puede usar para mover hacer historico de entradas
                 salidas[i]=entradas[A];
                 break;
             case CUADRADO:
@@ -705,17 +790,16 @@ void operacion_calcular(struct Operacion *mOp, float *entradas, int numEnt, floa
 
 void debug_op()
     {
-
     struct Operacion *mOp;
     printf("Creando operaciones\r\n");
     mOp = operacion_crear_operadores(2);
     printf("Agregando operaciones\r\n");
     operacion_agregar_op(mOp, IGUAL, 0);
-    operacion_agregar_op(mOp, DELTA_ANTERIOR, 0);
-    operacion_agregar_op(mOp, ANTERIOR, 0);
-    operacion_agregar_op(mOp, ANTERIOR, 0);
-    operacion_agregar_op(mOp, ANTERIOR, 0);
-    operacion_agregar_op(mOp, ANTERIOR, 0);
+    operacion_agregar_op(mOp, DELTA_ANTERIOR);
+    operacion_agregar_op(mOp, ANTERIOR);
+    operacion_agregar_op(mOp, ANTERIOR);
+    operacion_agregar_op(mOp, ANTERIOR);
+    operacion_agregar_op(mOp, ANTERIOR);
     printf("Calculando\r\n");
 #define OUT 6
     float Mentradas[1]= {0.1},Msalidas[OUT]= {0};
@@ -725,14 +809,17 @@ void debug_op()
         {
         printf("%f,\r\n",Msalidas[i]);
         }
+    printf("1:\r\n",Msalidas[i]);
     Mentradas[0]=0.8;
     operacion_calcular(mOp, Mentradas, 1, Msalidas,OUT);
     for(i=0; i<OUT; i++)
         printf("%f,\r\n",Msalidas[i]);
+    printf("2:\r\n",Msalidas[i]);
     Mentradas[0]=0.4;
     operacion_calcular(mOp, Mentradas, 1, Msalidas,OUT);
     for(i=0; i<OUT; i++)
         printf("%f,\r\n",Msalidas[i]);
+    printf("3:\r\n",Msalidas[i]);
     Mentradas[0]=0.2;
     operacion_calcular(mOp, Mentradas, 1, Msalidas,OUT);
     for(i=0; i<OUT; i++)
@@ -792,11 +879,13 @@ struct Administrador *administrador_crear(int numEntradas, int numSalidas)
     }
 
 
-void administrador_asignar_caracteristica_adicional(struct Administrador *mAdm, int operador, int cual_entrada)
+void administrador_asignar_caracteristica_adicional(struct Administrador *mAdm, int operador, ...)
     {
-    operacion_agregar_op(mAdm->mOp, operador, cual_entrada);
+    va_list argumentosVar;
+    va_start(argumentosVar, operador);
+    operacion_agregar_op_varg(mAdm->mOp, operador, argumentosVar);
+    va_end(argumentosVar);
     }
-
 
 
 
@@ -1107,7 +1196,7 @@ void administrador_debug()
     administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
     administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
     administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
-administrador_asignar_caracteristica_adicional(mAdm, IGUAL, 0);
+    administrador_asignar_caracteristica_adicional(mAdm, IGUAL, 0);
     administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR, 0);
     administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR, 0);
     administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR, 0);
