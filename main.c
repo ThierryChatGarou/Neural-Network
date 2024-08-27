@@ -1,15 +1,15 @@
 //For doubles use %lf in printf and scanf
 //For float use just %f
-//If supported, long double would be %Lf
+//If supported, long float would be %Lf
 
 #include <stdio.h>
 #include <stdlib.h>     /* srand, rand, malloc*/
 #include <time.h>       /* time */
 #include <math.h>
-void getch(){}
+void getch() {}
 
-    float alpha = 0.5; //0.5;
-    float VelocidadAprendizaje   = 0.01;  //Alrededor de 0.1
+float alpha = 0.5; //0.5;
+float VelocidadAprendizaje   = 0.00001;  //Alrededor de 0.1
 
 struct Neurona
     {
@@ -489,19 +489,21 @@ if(l[c[i]]>=m[d[j]])
 ///================================================Administrador de operaciones (experimental)============================================
 
 
-enum CARACTERISTICAS {IGUAL,ANTERIOR,DELTA_ANTERIOR,DELTA,INCREMENTO,CUADRADO,CUBO,SENO,COSENO,TANGENTE,SENO_H,COSENO_H,TANGENTE_H,LOG,LOG10,NOISE,TIME,RGB_SUM
+enum CARACTERISTICAS {IGUAL,ANTERIOR,DELTA_ANTERIOR,DELTA,ULTIMOS_10,INCREMENTO,CUADRADO,CUBO,SENO,COSENO,TANGENTE,SENO_H,COSENO_H,TANGENTE_H,LOG,LOG10,NOISE,TIME,RGB_SUM
                      };
 
 //solo aplica a las entradas adicionales
-struct Operacion   //adm
+struct Operacion
     {
-    int opAd;  //operaciones adicionales
-    int *operador;  //previamente caracteristicas
-    int *operandoA;
+    int opAd;         //Numero de operaciones adicionales agregadas
+    int *operador;    //Operado que se aplica a la entrada. Igualdad, anterior, Suma, Seno, Coseno, etc.
+    int *operandoA;   //Indica que entrada se usará como operando.
     int *operandoB;
     int *operandoC;
     int *operandoD;
-    int maxOperadores;
+    int maxOperadores;  //Numero de operadores reservados con malloc
+    float **memorias;   //Almacena los valores previos de las entradas para algunos operadores
+    char *primeraVez;    //indica que operador se ha ejecutado por primera vez.
     };
 
 struct Operacion *operacion_crear_operadores(int maxOperadores)
@@ -514,13 +516,32 @@ struct Operacion *operacion_crear_operadores(int maxOperadores)
     mOp->operandoB = (int *) calloc(maxOperadores,sizeof(int));
     mOp->operandoC = (int *) calloc(maxOperadores,sizeof(int));
     mOp->operandoD = (int *) calloc(maxOperadores,sizeof(int));
+    mOp->memorias = (float **) calloc(maxOperadores,sizeof(float *));
+    //mOp->primeraVez = (char *) malloc(maxOperadores * sizeof(char));
+    //memset(mOp->primeraVez,1,maxOperadores);
     return mOp;
     }
 
-void _expandir_memoria(int **inPtr, int tamano)
+void _expandir_memoria_int(int **inPtr, int tamano)
     {
     int *ptr;
     ptr = (int *) realloc(*inPtr, sizeof(int) * tamano);
+    if(ptr==NULL)
+        {
+        printf("Error Realloc line %d\r\n",__LINE__);
+        getch();
+        }
+    else
+        {
+        *inPtr = ptr;
+        }
+    }
+
+void _expandir_memoria_floatptr(float **inPtr, int tamano)
+    {
+    float **ptr;
+    printf("_expandir_memoria_floatptr\r\n");
+    ptr = (float **) realloc(*inPtr, sizeof(float *) * tamano);
     if(ptr==NULL)
         {
         printf("Error Realloc line %d\r\n",__LINE__);
@@ -537,11 +558,12 @@ void _operacion_incrementar_operadores(struct Operacion *mOp)
     int t;
     mOp->maxOperadores=mOp->maxOperadores*2;
     t=mOp->maxOperadores;
-    _expandir_memoria(&mOp->operador,t);
-    _expandir_memoria(&mOp->operandoA,t);
-    _expandir_memoria(&mOp->operandoB,t);
-    _expandir_memoria(&mOp->operandoC,t);
-    _expandir_memoria(&mOp->operandoD,t);
+    _expandir_memoria_int(&mOp->operador,t);
+    _expandir_memoria_int(&mOp->operandoA,t);
+    _expandir_memoria_int(&mOp->operandoB,t);
+    _expandir_memoria_int(&mOp->operandoC,t);
+    _expandir_memoria_int(&mOp->operandoD,t);
+    _expandir_memoria_floatptr(&mOp->memorias,t);
     }
 
 
@@ -560,6 +582,13 @@ void operacion_agregar_op(struct Operacion *mOp, int operador, int operandoA, ..
     int opAd = mOp->opAd;
     mOp->operador[opAd]=operador;
     mOp->operandoA[opAd]=operandoA;
+//asignar memoria si es necesario
+    switch(operador)
+        {
+        case ULTIMOS_10:
+            mOp->memorias[opAd] = (float *) malloc (sizeof(float) * 10);
+            break;
+        }
 //Carga operadores adicionales si es necesario
     va_list argumentos;
     switch(operador)
@@ -579,7 +608,7 @@ void operacion_agregar_op(struct Operacion *mOp, int operador, int operandoA, ..
 
 void operacion_calcular(struct Operacion *mOp, float *entradas, int numEnt, float *salidas, int numSal)
     {
-    int i;
+    int i,j;
     if(mOp->opAd != numSal)
         {
         printf("Error: mOp->opAd(%d) != numSal(%d)\r\n",mOp->opAd,numSal);
@@ -587,11 +616,11 @@ void operacion_calcular(struct Operacion *mOp, float *entradas, int numEnt, floa
         }
     //printf("salidas debe ser valido o esto truena\r\n");
 
-    for(i=mOp->opAd-1; i>=0; i--)
+    for(i=mOp->opAd-1; i>=0; i--)//operador especial
         {
         switch(mOp->operador[i])
             {
-            case ANTERIOR:  //operador especial
+            case ANTERIOR:
                 salidas[i]=salidas[i-1];
                 break;
             case DELTA_ANTERIOR:
@@ -600,6 +629,14 @@ void operacion_calcular(struct Operacion *mOp, float *entradas, int numEnt, floa
                 salidas[i]=entradas[A]-salidas[i-1];
                 }
             break;
+            case ULTIMOS_10:
+                salidas[i]=mOp->memorias[i][0];
+                mOp->memorias[i][9]=salidas[i-1];
+                for(j=0; j<10-1; j++)
+                    {
+                    mOp->memorias[i][j]=mOp->memorias[i][j+1];
+                    }
+                break;
             }
         }
 
@@ -739,19 +776,18 @@ struct Administrador
     struct Operacion *mOp;
     float *Entradas;
     float *EntradasCalculadas;
+    FILE *entrada, *entrenador, *salida;
     };
-
-
-
-//struct Administrador mAdm;
-
 
 struct Administrador *administrador_crear(int numEntradas, int numSalidas)
     {
     struct Administrador *mAdm = (struct Administrador *) malloc(sizeof(struct Administrador));
     mAdm->numEntradas=numEntradas;
     mAdm->numSalidas=numSalidas;
-    mAdm->mOp = operacion_crear_operadores(2);
+    mAdm->mOp = operacion_crear_operadores(32);
+    mAdm->entrada=NULL;
+    mAdm->entrenador=NULL;
+    mAdm->salida=NULL;
     return mAdm;
     }
 
@@ -793,22 +829,22 @@ void administrador_generar_red(struct Administrador *mAdm, int num_capas_ocultas
 
 //==================================================administrador de archivos============================================
 
-FILE *entrada=NULL, *entrenador=NULL, *salida=NULL;
+//FILE *entrada=NULL, *entrenador=NULL, *salida=NULL;
 
 
-void administrador_cargar_archivo_entrada(char *nombre)
+void administrador_cargar_archivo_entrada(struct Administrador *mAdm, char *nombre)
     {
-    if(entrada == NULL)
+    if(mAdm->entrada == NULL)
         {
-        entrada = fopen(nombre, "r");
+        mAdm->entrada = fopen(nombre, "r");
         }
     else
         {
-        //rewind (entrada);
-        fclose(entrada);
-        entrada = fopen(nombre, "r");
+        //rewind (mAdm->entrada);
+        fclose(mAdm->entrada);
+        mAdm->entrada = fopen(nombre, "r");
         }
-    if(entrada == NULL)
+    if(mAdm->entrada == NULL)
         {
         printf("Error de archivo de entrada");
         }
@@ -819,20 +855,20 @@ void administrador_cargar_archivo_entrada(char *nombre)
     }
 
 
-void administrador_cargar_archivo_entrenador(char *nombre)
+void administrador_cargar_archivo_entrenador(struct Administrador *mAdm, char *nombre)
     {
-    if(entrenador == NULL)
+    if(mAdm->entrenador == NULL)
         {
-        entrenador = fopen(nombre, "r");
+        mAdm->entrenador = fopen(nombre, "r");
         }
     else
         {
-        //rewind (entrenador);
-        fclose(entrenador);
-        entrenador = fopen(nombre, "r");
+        //rewind (mAdm->entrenador);
+        fclose(mAdm->entrenador);
+        mAdm->entrenador = fopen(nombre, "r");
         }
 
-    if(entrenador == NULL)
+    if(mAdm->entrenador == NULL)
         {
         printf("Error de archivo de entrenador");
         }
@@ -843,13 +879,18 @@ void administrador_cargar_archivo_entrenador(char *nombre)
     }
 
 
-void administrador_cargar_archivo_salida(char *nombre)
+void administrador_cargar_archivo_salida(struct Administrador *mAdm, char *nombre)
     {
-    if(salida == NULL)
+    if(mAdm->salida == NULL)
         {
-        salida = fopen(nombre, "wb+");
+        mAdm->salida = fopen(nombre, "wb+");
         }
-    if(salida == NULL)
+    else
+        {
+        fclose(mAdm->salida);
+        mAdm->salida = fopen(nombre, "wb+");
+        }
+    if(mAdm->salida == NULL)
         {
         printf("Error archivo de salida\r\n");
         }
@@ -863,16 +904,16 @@ void administrador_cargar_archivo_salida(char *nombre)
 void administrador_alimentar_entrada(struct Administrador *mAdm)
     {
     int i;
-    if(entrada != NULL)
+    if(mAdm->entrada != NULL)
         {
 //alimenta y calcula las caracteristicas de entrada
         for(i=0; i<mAdm->numEntradas-1; i++)
             {
             //fscanf(entrada, "%f",&mEntradas[i]);
-            fscanf(entrada, "%f,",&mAdm->Entradas[i]);
+            fscanf(mAdm->entrada, "%f,",&mAdm->Entradas[i]);
             }
         //fscanf(entrada, "%f\r\n",&mEntradas[i]);
-        fscanf(entrada, "%f\r\n",&mAdm->Entradas[i]);
+        fscanf(mAdm->entrada, "%f\r\n",&mAdm->Entradas[i]);
 
         operacion_calcular(mAdm->mOp, mAdm->Entradas, mAdm->numEntradas, mAdm->EntradasCalculadas, mAdm->numEntradasAdicionales);
         red_alimentar(mAdm->mRed, mAdm->Entradas, mAdm->numEntradas+mAdm->numEntradasAdicionales);
@@ -888,13 +929,13 @@ void administrador_alimentar_entrenador(struct Administrador *mAdm)  //Conocido 
     {
     int i;
     float mSalidas[mAdm->numSalidas];
-    if(entrenador != NULL)
+    if(mAdm->entrenador != NULL)
         {
         for(i=0; i<mAdm->numSalidas-1; i++)
             {
-            fscanf(entrenador, "%f,",&mSalidas[i]);
+            fscanf(mAdm->entrenador, "%f,",&mSalidas[i]);
             }
-        fscanf(entrenador, "%f\r\n",&mSalidas[i]);
+        fscanf(mAdm->entrenador, "%f\r\n",&mSalidas[i]);
         red_aprender(mAdm->mRed, mSalidas, mAdm->numSalidas);
         }
     else
@@ -903,19 +944,20 @@ void administrador_alimentar_entrenador(struct Administrador *mAdm)  //Conocido 
         }
     }
 
-void administrador_entrenar(struct Administrador *mAdm, int epoch)
+void administrador_entrenar(struct Administrador *mAdm, int epoch, float valorDeParo)
     {
     int i;
     int j=0;
     for(i=0; i<epoch; i++)
         {
-        administrador_cargar_archivo_entrada("in.csv");
-        administrador_cargar_archivo_entrenador("res.csv");
+        administrador_cargar_archivo_entrada(mAdm,"in.csv");
+        administrador_cargar_archivo_entrenador(mAdm,"res.csv");
 
         //llama a las 2 funciones que alimentan hasta acabar el archivo
-        //repite el entrenamiento la cantidad de veces especificada.
-        if(entrada!=NULL && entrenador != NULL)
-            while (!feof(entrada) && !feof(entrenador))
+        //repite el entrenamiento la cantidad de veces especificada:
+        if(mAdm->entrada!=NULL && mAdm->entrenador != NULL)
+            {
+            while (!feof(mAdm->entrada) && !feof(mAdm->entrenador))
                 {
                 administrador_alimentar_entrada(mAdm);
                 administrador_alimentar_entrenador(mAdm);
@@ -923,16 +965,16 @@ void administrador_entrenar(struct Administrador *mAdm, int epoch)
                 if(j==100000)
                     {
                     j=0;
-                    printf("E=%f \t\tEp=%f\r\n",mAdm->mRed->error,mAdm->mRed->errorpromedioreciente);
+                    printf("Epoch %d \tE=%f \tEp=%f\r\n",i,mAdm->mRed->error,mAdm->mRed->errorpromedioreciente);
                     }
-                if(mAdm->mRed->errorpromedioreciente<0.001)
+                if(mAdm->mRed->errorpromedioreciente<valorDeParo)
                     {
                     //printf("Logrado");
                     //printf("E=%f \t\tEp=%f\r\n",mAdm->mRed->error,mAdm->mRed->errorpromedioreciente);
                     //return;  //DEBUG
                     }
-//red_resultados(mAdm.mRed);
                 }
+            }
         }
 
     }
@@ -1028,9 +1070,18 @@ void red_debug2()
     //red_guardar(mRed, "MiRed.txt");
     }
 
+
+//Diferenciar: red_crear_desde_archivo  y red_cargar_archivo
+//red_crear_desde_archivo crea una nueva red desde un archivo
+//red_cargar_archivo carga los pesos de la red desde un archivo, debe coincidir con la estructura de la red.
+//
+//administrador_crear_red_desde_archivo(): sin comentarios
+//administrador_cargar_pesos_desde_archivo(): sin comentarios
+
+
 void administrador_debug()
     {
-        int i;
+    int i,j;
     srand (time(NULL));
     struct Administrador *mAdm = administrador_crear(1, 1);  //(int numEntradas, int numSalidas)
     printf("Creada\r\n");
@@ -1044,6 +1095,19 @@ void administrador_debug()
     administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR, 0);
     administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR, 0);
     administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR, 0);
+    /*administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR, 0);
+    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
+    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
+    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
+    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
+    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
+    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
+    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
+    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
+    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
+    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
+    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
+administrador_asignar_caracteristica_adicional(mAdm, IGUAL, 0);
     administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR, 0);
     administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR, 0);
     administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR, 0);
@@ -1051,43 +1115,54 @@ void administrador_debug()
     administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR, 0);
     administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR, 0);
     administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR, 0);
+    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
+    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
+    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
+    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
+    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
+    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
+    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
+    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
+    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
+    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
+    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);*/
 
 
     printf("Caracteristicas agregadas");
 
 
-    administrador_generar_red(mAdm, 2,32,4);        //(int num_capas_ocultas, Numero de neuronas en capa)
+    administrador_generar_red(mAdm, 1,4);        //(int num_capas_ocultas, Numero de neuronas en capa)
     printf("red generada\r\n");
     red_resultados(mAdm->mRed);
     printf("Entrenamiento\r\n");
 
-    for(i=0; i<1; i++)
+    for(j=0; j<1000; j++)
         {
-        administrador_cargar_archivo_entrada("in.csv");
-        administrador_cargar_archivo_entrenador("res.csv");
-        administrador_entrenar(mAdm, 2000);
-        }
-    red_guardar(mAdm->mRed, "MiRed2000-32-4.txt");
+        administrador_cargar_archivo_entrada(mAdm,"in.csv");
+        administrador_cargar_archivo_entrenador(mAdm,"res.csv");
+        administrador_entrenar(mAdm, 100, 0.0);
+        char txt[140];
+        sprintf(txt,"MiRed%d.txt",j);
+        red_guardar(mAdm->mRed, txt);
 
-    //red_cargar("MiRedA.txt");
-    printf("Examen de evaluacion\r\n");
-    administrador_cargar_archivo_entrada("in2.csv");
-    administrador_cargar_archivo_salida("out.txt");
-    for(i=0; i<254244; i++)
-        {
-        administrador_alimentar_entrada(mAdm);
-        //red_resultados(mAdm->mRed);
-fprintf(salida,"%f,",mAdm->mRed->listaCapas[0]->listaNeuronas[0]->salida);
-fprintf(salida,"%f\r\n",mAdm->mRed->listaCapas[mAdm->mRed->numCapas-1]->listaNeuronas[0]->salida);
-
+        //red_cargar("MiRedA.txt");
+        printf("Examen de evaluacion\r\n");
+        administrador_cargar_archivo_entrada(mAdm,"in2.csv");
+        sprintf(txt,"out%d.txt",j);
+        administrador_cargar_archivo_salida(mAdm,txt);
+        for(i=0; i<254000; i++)
+            {
+            administrador_alimentar_entrada(mAdm);
+            //red_resultados(mAdm->mRed);
+            fprintf(mAdm->salida,"%f,",mAdm->mRed->listaCapas[0]->listaNeuronas[0]->salida);
+            fprintf(mAdm->salida,"%f\r\n",mAdm->mRed->listaCapas[mAdm->mRed->numCapas-1]->listaNeuronas[0]->salida);
+            }
         }
     }
 
 void debug_crear_datos()
     {
+    FILE *entrada, *salida;
     srand (time(NULL));
     entrada = fopen("in.csv", "wb+");
     salida = fopen("res.csv", "wb+");
