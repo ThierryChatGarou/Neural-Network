@@ -461,7 +461,7 @@ void red_cargar_archivo_en_red(struct Red *mRed, char *archivo)
         {
         int numNeu;
         archivo_fscanf("%d,",&numNeu);
-        if(mRed->listaCapas[nC]->numNeuronas != numNeu)
+        if(mRed->listaCapas[nC]->numNeuronas-1 != numNeu)
             {
             printf("Error: Topologia de la red no coincide. red_cargar_archivo_en_red()\r\n");
             }
@@ -1004,9 +1004,6 @@ void administrador_entrenar(struct Administrador *mAdm, int epoch, float valorDe
 
 float administrador_evaluar_red(struct Administrador *mAdm)
     {
-    float calificacion;
-    int i;
-    int j=0;
     administrador_cargar_archivo_entrada(mAdm,"in.csv");
     administrador_cargar_archivo_entrenador(mAdm,"res.csv");
 
@@ -1048,7 +1045,7 @@ void administrador_procesar_red(struct Administrador *mAdm)
                 }
             }
         }
- administrador_cerrar_archivo_salida(mAdm);
+    administrador_cerrar_archivo_salida(mAdm);
     }
 
 
@@ -1150,6 +1147,15 @@ void red_debug2()
 //administrador_crear_red_desde_archivo(): sin comentarios
 //administrador_cargar_pesos_desde_archivo(): sin comentarios
 
+//TO DO. lista por hacer:
+//Guardar todos los pesos de una red en un solo arreglo simple de float
+//Organizar, renombrar variables y distinguir entre archivos de entrenamiento,  archivos de evaluacion de red, y archivos para procesamiento final.
+//Funiones para guargar y cargar pesos en la red
+//funciones para guardar la configuracion del administrador de red junto con los pesos de la red.
+//Leaky Relu
+//Gradiente caotico
+//Rayos gamma.
+
 
 void administrador_debug()
     {
@@ -1159,7 +1165,7 @@ void administrador_debug()
     struct Administrador *mAdm = administrador_crear(1, 1);  //(int numEntradas, int numSalidas)
     printf("Agregando Caracteristicas\r\n");
     administrador_asignar_caracteristica_adicional(mAdm, IGUAL, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, DELTA_ANTERIOR);
+    //administrador_asignar_caracteristica_adicional(mAdm, DELTA_ANTERIOR);
     administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR);
     administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR);
     administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR);
@@ -1173,10 +1179,12 @@ void administrador_debug()
     red_resultados(mAdm->mRed);
     printf("Iniciando entrenamiento\r\n");
 
+    //red_cargar_archivo_en_red(mAdm->mRed,"MiRedA.txt");
+
     for(j=0; j<10; j++)
         {
         printf("Entrenando\r\n");
-        administrador_entrenar(mAdm, 1000, 0.25);
+        administrador_entrenar(mAdm, 10000, 0.0);
         char txt[140];
         sprintf(txt,"MiRed%d.txt",j);
         red_guardar(mAdm->mRed, txt);
@@ -1284,7 +1292,7 @@ void archivo_abrir(char *filename)
     archivo=fopen((const char *)filename,"rb+");
     if(archivo==NULL)
         {
-        printf("Error al crear archivo\r\n");
+        printf("Error al abrir archivo %s\r\n",filename);
         exit(3);
         }
     printf("%s\r\n",filename);
