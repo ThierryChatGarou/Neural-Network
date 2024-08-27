@@ -222,7 +222,7 @@ struct Red *red_crear(int *topologiaCapas, int numCapas)
         mRed->listaCapas[i]=capa_crear(topologiaCapas[i-1]+1,topologiaCapas[i]+1);  //+1 neurona polirarizadora
         }
     //Otros elementos opcionales:
-    mRed->errorpromedioreciente=0.0;
+    mRed->errorpromedioreciente=1.0;
     mRed->factordesuavizadoreciente=100000.0;
     mRed->error=0.0;
     return mRed;
@@ -396,7 +396,7 @@ void red_guardar(struct Red *mRed, char *archivo)
     }
 
 
-struct Red *red_cargar(char *archivo)
+struct Red *red_crear_desde_archivo(char *archivo)
     {
     struct Red *mRed;
     archivo_abrir(archivo);
@@ -444,55 +444,64 @@ struct Red *red_cargar(char *archivo)
 
 
 
-/*
-void neural_network_in_c(int *a, int *b, int *c, int *d, int size, int layer, float bloque, float paisaje)
-{
-int i,j,k,l,m;
-for(i=0;i<size;i++)
-for(j=0;j<layer-2;j++)
-{
-if(a[i]>=b[j])
-{
-if(l[c[i]]>=m[d[j]])
-{
-int o=func();
-}
-else
-{
-if(l[c[i]]>=m[d[j]])
-{
-
-
-  if((o%16)!=0)  // comprobar que bloques necesitan actualizarse
+void red_cargar_archivo_en_red(struct Red *mRed, char *archivo)
     {
-    bloque(o-(o%16),p-(p%16),paisaje[(p-(p%16))/16][(o-(o%16))/16]);  //actualizar bloque que esta arriba a la izquierda
-    bloque(o-(o%16)+16,p-(p%16),paisaje[(p-(p%16))/16][(o+16-(o%16))/16]);  //actualizar bloque que esta arriba a la derecha
-    if((p%16)!=0)
-      {
-      bloque(o-(o%16),p-(p%16)+16,paisaje[(p+16-(p%16))/16][(o-(o%16))/16]);  //actualizar bloque que esta abajo a la izquierda
-      bloque(o-(o%16)+16,p-(p%16)+16,paisaje[(p+16-(p%16))/16][(o+16-(o%16))/16]);  //actualizar bloque que esta abajo a la derecha
-      }
+    archivo_abrir(archivo);
+//Verificar que el numero de capas coincide.
+    int numCapas;
+    archivo_fscanf("Capas:%d\r\n",&numCapas);
+    if(mRed->numCapas!=numCapas)
+        {
+        printf("Numero de capas en archivo no coincide con la red actual. red_cargar_archivo_en_red()\r\n");
+        }
+//Verificar que la topologia de la red es correcta:
+    int nC,nN,nE;
+    archivo_fscanf("Topologia: ");
+    for(nC=0; nC<numCapas; nC++)
+        {
+        int numNeu;
+        archivo_fscanf("%d,",&numNeu);
+        if(mRed->listaCapas[nC]->numNeuronas != numNeu)
+            {
+            printf("Error: Topologia de la red no coincide. red_cargar_archivo_en_red()\r\n");
+            }
+        }
+    archivo_fscanf("\r\n");
+//cargar el valor de las entradas en cada neurona
+    for(nC=0; nC<mRed->numCapas; nC++)
+        {
+        int nCapa;
+        archivo_fscanf("Capa %d:\r\n",&nCapa);
+        struct Capa *mCapa = mRed->listaCapas[nC];
+        for(nN=0; nN<mCapa->numNeuronas-1; nN++)
+            {
+            struct Neurona *mNeurona = mCapa->listaNeuronas[nN];
+            int numNeu,numEnt;
+            archivo_fscanf("\t%d-Entradas:%d\r\n\t\t",&numNeu,&numEnt);
+            if(nN!=numNeu || numEnt!=mNeurona->numEntradas)
+                {
+                printf("Debug needed here too!\r\n");
+                }
+            for(nE=0; nE<mNeurona->numEntradas; nE++)
+                {
+                archivo_fscanf("%f,",&mNeurona->entradas[nE]);
+                }
+            archivo_fscanf("\r\n");
+            }
+        }
+    archivo_cerrar();
+    return;
     }
-  else if((p%16)!=0)
-    {
-    bloque(o-(o%16),p-(p%16),paisaje[(p-(p%16))/16][(o-(o%16))/16]);  //actualizar bloque que esta arriba a la izquierda
-    bloque(o-(o%16),p-(p%16)+16,paisaje[(p+16-(p%16))/16][(o-(o%16))/16]);  //actualizar bloque que esta abajo a la izquierda
-    }
-  else
-    {
-    bloque(o,p,paisaje[p/16][o/16]);  //actualizar bloque que esta arriba a la izquierda, el bloque que esta en su posicion
-    }
-}
-}
-}*/
-
-///================================================Administrador de operaciones (experimental)============================================
 
 
-enum CARACTERISTICAS {IGUAL,ANTERIOR,DELTA_ANTERIOR,DELTA,ULTIMOS_10,INCREMENTO,CUADRADO,CUBO,SENO,COSENO,TANGENTE,SENO_H,COSENO_H,TANGENTE_H,LOG,LOG10,NOISE,TIME,RGB_SUM
+
+///================================================Administrador de operaciones============================================
+
+
+enum CARACTERISTICAS {IGUAL,ANTERIOR,DELTA_ANTERIOR,ULTIMOS_10,INCREMENTO,CUADRADO,CUBO,SENO,COSENO,TANGENTE,SENO_H,COSENO_H,TANGENTE_H,LOG,LOG10,NOISE,TIME,RGB_SUM
                      };
 
-//solo aplica a las entradas adicionales
+//Los operadores se usan para crear entradas adicionales para la red.
 struct Operacion
     {
     int opAd;         //Numero de operaciones adicionales agregadas
@@ -503,7 +512,6 @@ struct Operacion
     int *operandoD;
     int maxOperadores;  //Numero de operadores reservados con malloc
     float **memorias;   //Almacena los valores previos de las entradas para algunos operadores
-    char *primeraVez;    //indica que operador se ha ejecutado por primera vez.
     };
 
 struct Operacion *operacion_crear_operadores(int maxOperadores)
@@ -517,8 +525,6 @@ struct Operacion *operacion_crear_operadores(int maxOperadores)
     mOp->operandoC = (int *) calloc(maxOperadores,sizeof(int));
     mOp->operandoD = (int *) calloc(maxOperadores,sizeof(int));
     mOp->memorias = (float **) calloc(maxOperadores,sizeof(float *));
-    //mOp->primeraVez = (char *) malloc(maxOperadores * sizeof(char));
-    //memset(mOp->primeraVez,1,maxOperadores);
     return mOp;
     }
 
@@ -631,64 +637,7 @@ void operacion_agregar_op(struct Operacion *mOp, int operador, ...)
     va_start(argumentos, operador);
     operacion_agregar_op_varg(mOp, operador, argumentos);
     va_end(argumentos);
-    /*int opAd = mOp->opAd;
-    //Si se requieren mas operadores, entonce expandir memoria.
-    if(opAd >= mOp->maxOperadores)
-        {
-        printf("Expandiendo operadores %d->",opAd);
-        _operacion_incrementar_operadores(mOp);
-        printf("%d\r\n",mOp->maxOperadores);
-        }
-    mOp->operador[opAd]=operador;
-    //asignar memoria si es necesario:
-    switch(operador)
-        {
-        case ULTIMOS_10:
-            mOp->memorias[opAd] = (float *) malloc (sizeof(float) * 10);
-            break;
-        }
-    //Carga operadores adicionales si es necesario
-    va_list argumentos;
-    va_start(argumentos, operador);
-    switch(operador)
-        {
-    //operaciones sin operadores (no hacer nada, solo para documentacion)
-        case ANTERIOR:
-        case ULTIMOS_10:
-            break;
-        //Operaciones de un solo operador
-        case DELTA_ANTERIOR:
-        case IGUAL:   //0
-        case CUADRADO:
-        case CUBO:
-        case SENO:
-        case COSENO:
-        case TANGENTE:
-        case SENO_H:
-        case COSENO_H:
-        case TANGENTE_H:
-        case LOG:
-        case LOG10:
-            mOp->operandoA[opAd] = va_arg ( argumentos, int );
-            break;
-        //Operaciones de 3 operadores
-        case RGB_SUM:  //ejemplo
-            mOp->operandoA[opAd] = va_arg ( argumentos, int );
-            mOp->operandoB[opAd] = va_arg ( argumentos, int );
-            mOp->operandoC[opAd] = va_arg ( argumentos, int );
-
-            break;
-        default:
-            break;
-        }
-    va_end(argumentos);
-    mOp->opAd++;*/
-
     }
-
-
-
-
 
 
 void operacion_calcular(struct Operacion *mOp, float *entradas, int numEnt, float *salidas, int numSal)
@@ -705,7 +654,7 @@ void operacion_calcular(struct Operacion *mOp, float *entradas, int numEnt, floa
         {
         switch(mOp->operador[i])
             {
-            case ANTERIOR:
+            case ANTERIOR:  //La salida sera agual al valor anterior de otra salida.
                 salidas[i]=salidas[i-1];
                 break;
             case DELTA_ANTERIOR:
@@ -724,7 +673,7 @@ void operacion_calcular(struct Operacion *mOp, float *entradas, int numEnt, floa
                 break;
             }
         }
-
+//Caucular las operaciones a las entradas
     for(i=0; i<mOp->opAd ; i++)
         {
         int A = mOp->operandoA[i];
@@ -809,45 +758,22 @@ void debug_op()
         {
         printf("%f,\r\n",Msalidas[i]);
         }
-    printf("1:\r\n",Msalidas[i]);
+    printf("1:\r\n");
     Mentradas[0]=0.8;
     operacion_calcular(mOp, Mentradas, 1, Msalidas,OUT);
     for(i=0; i<OUT; i++)
         printf("%f,\r\n",Msalidas[i]);
-    printf("2:\r\n",Msalidas[i]);
+    printf("2:\r\n");
     Mentradas[0]=0.4;
     operacion_calcular(mOp, Mentradas, 1, Msalidas,OUT);
     for(i=0; i<OUT; i++)
         printf("%f,\r\n",Msalidas[i]);
-    printf("3:\r\n",Msalidas[i]);
+    printf("3:\r\n");
     Mentradas[0]=0.2;
     operacion_calcular(mOp, Mentradas, 1, Msalidas,OUT);
     for(i=0; i<OUT; i++)
         printf("%f,\r\n",Msalidas[i]);
     }
-
-
-//numEntradas debe coincidir con el tamano de la red sin caracteristicas u operadores
-// *entradas son los datos del csv.
-/*void fcalc_alimentar(struct *adm, float *entradas, int numEntradas)
-{
-adm.red.capa[0].entrada=entradas[forloop];
-adm.red.capa[0].salida=f(adm.red.capa[0].entrada);
-}
-*/
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 ///===================================================Administrador de red===============================
@@ -989,6 +915,14 @@ void administrador_cargar_archivo_salida(struct Administrador *mAdm, char *nombr
         }
     }
 
+void administrador_cerrar_archivo_salida(struct Administrador *mAdm)
+    {
+    if(mAdm->salida != NULL)
+        {
+        fclose(mAdm->salida);
+        }
+    }
+
 
 void administrador_alimentar_entrada(struct Administrador *mAdm)
     {
@@ -1058,14 +992,63 @@ void administrador_entrenar(struct Administrador *mAdm, int epoch, float valorDe
                     }
                 if(mAdm->mRed->errorpromedioreciente<valorDeParo)
                     {
-                    //printf("Logrado");
-                    //printf("E=%f \t\tEp=%f\r\n",mAdm->mRed->error,mAdm->mRed->errorpromedioreciente);
-                    //return;  //DEBUG
+                    printf("Logrado ");
+                    printf("E=%f \t\tEp=%f\r\n",mAdm->mRed->error,mAdm->mRed->errorpromedioreciente);
+                    return;  //DEBUG
                     }
                 }
             }
         }
+    }
 
+
+float administrador_evaluar_red(struct Administrador *mAdm)
+    {
+    float calificacion;
+    int i;
+    int j=0;
+    administrador_cargar_archivo_entrada(mAdm,"in.csv");
+    administrador_cargar_archivo_entrenador(mAdm,"res.csv");
+
+    //llama a las 2 funciones que alimentan hasta acabar el archivo
+    //repite el entrenamiento la cantidad de veces especificada:
+    if(mAdm->entrada!=NULL && mAdm->entrenador != NULL)
+        {
+        while (!feof(mAdm->entrada) && !feof(mAdm->entrenador))
+            {
+            administrador_alimentar_entrada(mAdm);
+            }
+        }
+    printf("mAdm->mRed->errorpromedioreciente = %f\r\n",mAdm->mRed->errorpromedioreciente);
+    return mAdm->mRed->errorpromedioreciente;
+    }
+
+
+
+
+void administrador_procesar_red(struct Administrador *mAdm)
+    {
+    int i;
+    administrador_cargar_archivo_entrada(mAdm,"in2.csv");
+    administrador_cargar_archivo_salida(mAdm,"out.txt");
+    if(mAdm->entrada!=NULL && mAdm->salida != NULL)
+        {
+        while (!feof(mAdm->entrada) && !feof(mAdm->salida))
+            {
+            administrador_alimentar_entrada(mAdm);
+            //fprintf(mAdm->salida,"%f,",mAdm->mRed->listaCapas[0]->listaNeuronas[0]->salida);
+            //fprintf(mAdm->salida,"%f\r\n",mAdm->mRed->listaCapas[mAdm->mRed->numCapas-1]->listaNeuronas[0]->salida);
+            for(i=0; i<mAdm->numEntradas; i++)
+                {
+                fprintf(mAdm->salida,"%f,",mAdm->mRed->listaCapas[0]->listaNeuronas[i]->salida);  //imprimir la entrada de la red
+                }
+            for(i=0; i<mAdm->numSalidas; i++)
+                {
+                fprintf(mAdm->salida,"%f\r\n",mAdm->mRed->listaCapas[mAdm->mRed->numCapas-1]->listaNeuronas[i]->salida); //imprimir la salida de la red.
+                }
+            }
+        }
+ administrador_cerrar_archivo_salida(mAdm);
     }
 
 
@@ -1133,7 +1116,7 @@ void red_debug2()
 #define SAMPLES 4
     int topo[3]= {IN_SIZE,3,OUT_SIZE};
     //struct Red *mRed = red_crear(topo, 3);
-    struct Red *mRed=red_cargar("MiRed.txt");
+    struct Red *mRed=red_crear_desde_archivo("MiRed.txt");
 
     float vin[SAMPLES][IN_SIZE]= {{0.3,0.1},{0.8,0.2},{0.1,0.1},{0.2,0.6}};
     float vout[SAMPLES][OUT_SIZE]= {{0.4},    {1.0},    {0.2},    {0.8}};
@@ -1160,7 +1143,7 @@ void red_debug2()
     }
 
 
-//Diferenciar: red_crear_desde_archivo  y red_cargar_archivo
+//Diferenciar: red_crear_desde_archivo  y red_cargar_archivo_en_red
 //red_crear_desde_archivo crea una nueva red desde un archivo
 //red_cargar_archivo carga los pesos de la red desde un archivo, debe coincidir con la estructura de la red.
 //
@@ -1172,82 +1155,37 @@ void administrador_debug()
     {
     int i,j;
     srand (time(NULL));
+    printf("Creando administrador\r\n");
     struct Administrador *mAdm = administrador_crear(1, 1);  //(int numEntradas, int numSalidas)
-    printf("Creada\r\n");
-
-
+    printf("Agregando Caracteristicas\r\n");
     administrador_asignar_caracteristica_adicional(mAdm, IGUAL, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, DELTA_ANTERIOR, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR, 0);
-    /*administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, IGUAL, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);
-    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10, 0);*/
+    administrador_asignar_caracteristica_adicional(mAdm, DELTA_ANTERIOR);
+    administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR);
+    administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR);
+    administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR);
+    administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR);
+    administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR);
+    administrador_asignar_caracteristica_adicional(mAdm, ANTERIOR);
+    administrador_asignar_caracteristica_adicional(mAdm, ULTIMOS_10);
 
-
-    printf("Caracteristicas agregadas");
-
-
+    printf("Generando Red\r\n");
     administrador_generar_red(mAdm, 1,4);        //(int num_capas_ocultas, Numero de neuronas en capa)
-    printf("red generada\r\n");
     red_resultados(mAdm->mRed);
-    printf("Entrenamiento\r\n");
+    printf("Iniciando entrenamiento\r\n");
 
-    for(j=0; j<1000; j++)
+    for(j=0; j<10; j++)
         {
-        administrador_cargar_archivo_entrada(mAdm,"in.csv");
-        administrador_cargar_archivo_entrenador(mAdm,"res.csv");
-        administrador_entrenar(mAdm, 100, 0.0);
+        printf("Entrenando\r\n");
+        administrador_entrenar(mAdm, 1000, 0.25);
         char txt[140];
         sprintf(txt,"MiRed%d.txt",j);
         red_guardar(mAdm->mRed, txt);
-
-        //red_cargar("MiRedA.txt");
-        printf("Examen de evaluacion\r\n");
-        administrador_cargar_archivo_entrada(mAdm,"in2.csv");
-        sprintf(txt,"out%d.txt",j);
-        administrador_cargar_archivo_salida(mAdm,txt);
-        for(i=0; i<254000; i++)
-            {
-            administrador_alimentar_entrada(mAdm);
-            //red_resultados(mAdm->mRed);
-            fprintf(mAdm->salida,"%f,",mAdm->mRed->listaCapas[0]->listaNeuronas[0]->salida);
-            fprintf(mAdm->salida,"%f\r\n",mAdm->mRed->listaCapas[mAdm->mRed->numCapas-1]->listaNeuronas[0]->salida);
-            }
+        printf("Evaluando\r\n");
+        administrador_evaluar_red(mAdm);
         }
+    administrador_procesar_red(mAdm);
     }
+
 
 void debug_crear_datos()
     {
